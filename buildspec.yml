@@ -19,5 +19,5 @@ phases:
       - aws s3 cp index-photos.zip s3://lambda-build-photo-album/index-photos.zip
 artifacts:
   files:
-    - dummy_artifact.txt
-  name: MyCustomArtifact
+    - search-photos.zip
+    - index-photos.zip
