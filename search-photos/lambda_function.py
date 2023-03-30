@@ -1,16 +1,16 @@
+#TESTING
+import boto3
 import json
-import boto3 
-
-#added changes TEST
 from opensearchpy import OpenSearch, RequestsHttpConnection
+import urllib.request
+import requests
 from requests_aws4auth import AWS4Auth
 
 from botocore.exceptions import ClientError
-from datetime import datetime
 
-s3_resource = boto3.resource('s3')
-s3 = boto3.client('s3')
-rekognition = boto3.client('rekognition')
+# Define the client to interact with Lex
+client = boto3.client('lexv2-runtime')
+
 
 REGION = 'us-east-1'
 HOST = 'search-photos-df2awflxl7ypfve2bic7gqst6y.us-east-1.es.amazonaws.com'
@@ -18,63 +18,134 @@ INDEX = 'photos'
 url = "https://search-photos-df2awflxl7ypfve2bic7gqst6y.us-east-1.es.amazonaws.com/photos/_doc"
 
 def lambda_handler(event, context):
-    
-    # FORMAT CUSTOM LABELS HEADER -- CONVERT TO JSON ARRAY BEFORE ADDING TO LABELS - DO WITH API
-    # fix custom labels
-    
-    metadata = s3.head_object(Bucket=event["Records"][0]["s3"]["bucket"]["name"],
-                                Key=event["Records"][0]["s3"]["object"]["key"])
-    print(metadata)
-    created_timestamp = metadata['ResponseMetadata']['HTTPHeaders']['last-modified']
-    
-    response = rekognition.detect_labels(
-        Image={
-            'S3Object': {
-                'Bucket': event["Records"][0]["s3"]["bucket"]["name"],
-                'Name': event["Records"][0]["s3"]["object"]["key"],
+    # retrieve message from API gateway
+    print(event)
+    msg_from_user = event["queryStringParameters"]["q"]
+    # CHANGE TO CORRECT FORMATTING
+    # msg_from_user = event
+    # Initiate conversation with Lex
+    response = client.recognize_text(
+            # note: botId and botAliasId
+            botId='1ZSHG26S3S',
+            botAliasId='NLHGEVUTTZ',
+            localeId='en_US',
+            sessionId='testuser',
+            # CHANGE TO CORRECT FORMATTING
+            text=msg_from_user)
+            #text=msg_from_user['unstructured']['text'])
+    print(response)
+    # from response -- need to extract the keywords
+    query_terms = []
+    query_1 = response["interpretations"][0]["intent"]["slots"]["slot1"]["value"]["resolvedValues"][0]
+    query_terms.append(word_stem(query_1))
+
+    if not response["interpretations"][0]["intent"]["slots"]["slot2"] == None:
+        query_2 = response["interpretations"][0]["intent"]["slots"]["slot2"]["value"]["resolvedValues"][0]
+        query_terms.append(word_stem(query_2))
+
+
+    print(query_terms)
+
+    # search the keywords in OpenSearch
+    elastic_query_results1 = query(query_terms[0])
+
+    if len(query_terms) > 1:
+        elastic_query_results2 = query(query_terms[1])
+        original_list = elastic_query_results1 + elastic_query_results2
+        query_results = list(set((a, tuple(b)) for a, b in original_list))
+
+    else:
+        elastic_query_results1
+        query_results = list(set((a, tuple(b)) for a, b in elastic_query_results1))
+
+    print(query_results)
+
+
+    message_resp = []
+    if len(query_results) > 0:
+        # Construct list of photo objects
+        photos = []
+        for result in query_results:
+            photo = {
+                'url': result[0],
+                'labels': result[1]
             }
-        },
-    )
-    
-    labels = [label['Name'].lower() for label in response['Labels']]
-    if 'x-amz-meta-customLabels' in metadata['ResponseMetadata']['HTTPHeaders']:
-        for label in metadata['ResponseMetadata']['HTTPHeaders']['x-amz-meta-customLabels']:
-            labels.append(label)
+            photos.append(photo)
 
-    image_data = {
-        'objectKey': event["Records"][0]["s3"]["object"]["key"],
-        'bucket': event["Records"][0]["s3"]["bucket"]["name"],
-        'createdTimestamp': created_timestamp,
-        'labels': labels,
-    }
+        # Construct response message
+        resp_message = {
+            'type': 'structured',
+            'structured': {
+                'SearchResponse': {
+                    'results': photos
+                }
+            }
+        }
+        message_resp.append(resp_message)
+    else:
+        # Construct response message for no results found
+        resp_message = {
+            'type': 'unstructured',
+            'unstructured': {
+                'text': 'No results found for search query'
+            }
+        }
+        message_resp.append(resp_message)
 
-    print(image_data)
-    response = upload(image_data)
+    # Construct final response dictionary
 
-    return {
+    resp = {
         'statusCode': 200,
-        'body': json.dumps(image_data)
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Headers': '*',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'OPTIONS,GET',
+        },
+        'body': json.dumps({"results": message_resp[0]["structured"]["SearchResponse"]["results"]})
     }
+    return resp
 
-def upload(image_data):
-    data = json.dumps(image_data)
-    client = OpenSearch(hosts=[{
-        'host': HOST,
-        'port': 443
-    }],
-                        http_auth=get_awsauth(REGION, 'es'),
-                        use_ssl=True,
-                        verify_certs=True,
-                        connection_class=RequestsHttpConnection)
-                        
-    
-    res = client.index(index=INDEX, body=data)
-    return res
 
+def query(term):
+    q = {
+        'size': 50,
+        'query': {
+            'bool': {
+                'must': [
+                    {
+                        'match': {
+                            'labels': term
+                        }
+                    }
+                ]
+            }
+        }
+    }
+    client = OpenSearch(
+        hosts=[{            'host': HOST,            'port': 443        }],
+        http_auth=get_awsauth(REGION, 'es'),
+        use_ssl=True,
+        verify_certs=True,
+        connection_class=RequestsHttpConnection
+    )
+    res = client.search(index=INDEX, body=q)
+    hits = res['hits']['hits']
+    results = []
+    for hit in hits:
+        result = (hit['_source']['objectKey'], hit['_source']['labels'])
+        results.append(result)
+    return results
+
+
+def word_stem(word):
+    if word.endswith("s"):
+        return word[:-1]
+    else:
+        return word
 
 def get_awsauth(region, service):
     cred = boto3.Session().get_credentials()
-    print(cred)
     return AWS4Auth(cred.access_key,
                     cred.secret_key,
                     region,

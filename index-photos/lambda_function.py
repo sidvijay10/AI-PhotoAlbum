@@ -1,5 +1,5 @@
 import json
-import boto3 
+import boto3
 
 #added changes TEST
 from opensearchpy import OpenSearch, RequestsHttpConnection
@@ -18,15 +18,12 @@ INDEX = 'photos'
 url = "https://search-photos-df2awflxl7ypfve2bic7gqst6y.us-east-1.es.amazonaws.com/photos/_doc"
 
 def lambda_handler(event, context):
-    
-    # FORMAT CUSTOM LABELS HEADER -- CONVERT TO JSON ARRAY BEFORE ADDING TO LABELS - DO WITH API
-    # fix custom labels
-    
+
     metadata = s3.head_object(Bucket=event["Records"][0]["s3"]["bucket"]["name"],
                                 Key=event["Records"][0]["s3"]["object"]["key"])
     print(metadata)
     created_timestamp = metadata['ResponseMetadata']['HTTPHeaders']['last-modified']
-    
+
     response = rekognition.detect_labels(
         Image={
             'S3Object': {
@@ -35,10 +32,12 @@ def lambda_handler(event, context):
             }
         },
     )
-    
+
     labels = [label['Name'].lower() for label in response['Labels']]
-    if 'x-amz-meta-customLabels' in metadata['ResponseMetadata']['HTTPHeaders']:
-        for label in metadata['ResponseMetadata']['HTTPHeaders']['x-amz-meta-customLabels']:
+    if bool(metadata['Metadata']):
+        string_custom_labels = metadata['Metadata']['customlabels']
+        list_custom_labels = [word.strip() for word in string_custom_labels.split(",")]
+        for label in list_custom_labels:
             labels.append(label)
 
     image_data = {
@@ -66,8 +65,8 @@ def upload(image_data):
                         use_ssl=True,
                         verify_certs=True,
                         connection_class=RequestsHttpConnection)
-                        
-    
+
+
     res = client.index(index=INDEX, body=data)
     return res
 
@@ -80,3 +79,4 @@ def get_awsauth(region, service):
                     region,
                     service,
                     session_token=cred.token)
+
