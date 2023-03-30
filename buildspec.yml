@@ -17,3 +17,7 @@ phases:
       - echo Uploading packages to S3...
       - aws s3 cp search-photos.zip s3://lambda-build-photo-album/search-photos.zip
       - aws s3 cp index-photos.zip s3://lambda-build-photo-album/index-photos.zip
+artifacts:
+  files:
+    - dummy_artifact.txt
+  name: MyCustomArtifact
