@@ -1,7 +1,7 @@
 import json
 import boto3
 
-#added changes TEST TESTING
+#added changes
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
 
@@ -79,4 +79,3 @@ def get_awsauth(region, service):
                     region,
                     service,
                     session_token=cred.token)
-

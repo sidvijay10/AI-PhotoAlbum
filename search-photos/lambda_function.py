@@ -1,4 +1,3 @@
-#TESTING TESTING
 import boto3
 import json
 from opensearchpy import OpenSearch, RequestsHttpConnection
@@ -93,17 +92,29 @@ def lambda_handler(event, context):
         message_resp.append(resp_message)
 
     # Construct final response dictionary
-
-    resp = {
-        'statusCode': 200,
-        'headers': {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Headers': '*',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'OPTIONS,GET',
-        },
-        'body': json.dumps({"results": message_resp[0]["structured"]["SearchResponse"]["results"]})
-    }
+    resp = {}
+    if resp_message['type'] == 'structured':
+        resp = {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Headers': '*',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'OPTIONS,GET',
+            },
+            'body': json.dumps({"results": message_resp[0]["structured"]["SearchResponse"]["results"]})
+        }
+    else:
+        resp = {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Headers': '*',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'OPTIONS,GET',
+            },
+            'body': json.dumps({"results": []})
+        }
     return resp
 
 
