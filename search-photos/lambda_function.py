@@ -10,6 +10,7 @@ from botocore.exceptions import ClientError
 # Define the client to interact with Lex
 client = boto3.client('lexv2-runtime')
 
+# COMMENT ADDITION 1
 
 REGION = 'us-east-1'
 HOST = 'search-photos-df2awflxl7ypfve2bic7gqst6y.us-east-1.es.amazonaws.com'
