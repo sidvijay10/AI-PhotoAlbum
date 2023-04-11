@@ -19,6 +19,7 @@ url = "https://search-photos-df2awflxl7ypfve2bic7gqst6y.us-east-1.es.amazonaws.c
 
 def lambda_handler(event, context):
 
+    # COMMENT TEST
     metadata = s3.head_object(Bucket=event["Records"][0]["s3"]["bucket"]["name"],
                                 Key=event["Records"][0]["s3"]["object"]["key"])
     print(metadata)
